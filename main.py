@@ -70,6 +70,9 @@ def send_discord_notification(webhook_url, status_code):
     }
     status_text = status_map.get(status_code, f"❓ Unknown ({status_code})")
 
+    # 🔥 Ping เฉพาะตอนออนไลน์ (status > 0)
+    content = "<@918384557131173988>" if status_code > 0 else None
+
     payload = {
         "username": "Roblox Tracker",
         "avatar_url": "https://images.rbxcdn.com/251325146c6e737bd3297a760c4fb62c.png",
@@ -86,6 +89,10 @@ def send_discord_notification(webhook_url, status_code):
             }
         ],
     }
+    
+    # เพิ่ม content ถ้ามี (ไม่ใส่ถ้า None)
+    if content:
+        payload["content"] = content
     
     try:
         resp = requests.post(webhook_url, json=payload, timeout=10)
