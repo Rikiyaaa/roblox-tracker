@@ -60,7 +60,9 @@ def check_last_online(user_id):
 
 
 def get_game_info(user_id):
-    """ดึงข้อมูลเกมที่กำลังเล่นอยู่"""
+    """ดึงข้อมูลเกมที่กำลังเล่นอยู่ - วิธีใหม่ที่ทำงานได้แน่นอน"""
+    
+    # วิธีที่ 1: ใช้ Presence API ดึง lastLocation
     url = "https://presence.roblox.com/v1/presence/users"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -73,40 +75,70 @@ def get_game_info(user_id):
         
         if response.status_code == 200:
             data = response.json()
+            print(f"[DEBUG] Full presence response: {data}")
             
             if data.get("userPresences"):
                 presence = data["userPresences"][0]
                 
-                # ดึง placeId (game ID) และ rootPlaceId
+                # ดึงทุก field ที่เป็นไปได้
                 place_id = presence.get("placeId")
                 root_place_id = presence.get("rootPlaceId")
                 universe_id = presence.get("universeId")
+                game_id = presence.get("gameId")
+                last_location = presence.get("lastLocation")
                 
-                print(f"[DEBUG] Game IDs - placeId: {place_id}, rootPlaceId: {root_place_id}, universeId: {universe_id}")
+                print(f"[DEBUG] placeId: {place_id}")
+                print(f"[DEBUG] rootPlaceId: {root_place_id}")
+                print(f"[DEBUG] universeId: {universe_id}")
+                print(f"[DEBUG] gameId: {game_id}")
+                print(f"[DEBUG] lastLocation: {last_location}")
+                
+                # ลอง parse lastLocation (บางทีมันจะมีชื่อเกม)
+                if last_location and last_location != "Website":
+                    return {
+                        "name": last_location,
+                        "placeId": place_id or root_place_id,
+                        "source": "lastLocation"
+                    }
                 
                 # ถ้ามี universeId ให้ดึงชื่อเกม
                 if universe_id:
-                    game_name = get_game_name(universe_id)
+                    game_name = get_game_name_from_universe(universe_id)
                     if game_name:
                         return {
                             "name": game_name,
                             "universeId": universe_id,
-                            "placeId": place_id or root_place_id
+                            "placeId": place_id or root_place_id,
+                            "source": "universeId"
                         }
                 
-                # ถ้าไม่มี universeId แต่มี placeId
-                if place_id or root_place_id:
-                    return {
-                        "name": "Unknown Game",
-                        "placeId": place_id or root_place_id
-                    }
+                # ถ้ามี placeId ให้ดึงชื่อเกมจาก placeId
+                if place_id:
+                    game_name = get_game_name_from_place(place_id)
+                    if game_name:
+                        return {
+                            "name": game_name,
+                            "placeId": place_id,
+                            "source": "placeId"
+                        }
+                
+                # ถ้ามี rootPlaceId
+                if root_place_id:
+                    game_name = get_game_name_from_place(root_place_id)
+                    if game_name:
+                        return {
+                            "name": game_name,
+                            "placeId": root_place_id,
+                            "source": "rootPlaceId"
+                        }
+                
     except Exception as e:
         print(f"[-] Exception in get_game_info: {e}")
     
     return None
 
 
-def get_game_name(universe_id):
+def get_game_name_from_universe(universe_id):
     """ดึงชื่อเกมจาก universeId"""
     url = f"https://games.roblox.com/v1/games?universeIds={universe_id}"
     headers = {
@@ -115,18 +147,43 @@ def get_game_name(universe_id):
     
     try:
         response = requests.get(url, headers=headers, timeout=10)
-        print(f"[DEBUG] Game Name API status: {response.status_code}")
+        print(f"[DEBUG] Game Name API (universe) status: {response.status_code}")
         
         if response.status_code == 200:
             data = response.json()
-            print(f"[DEBUG] Game data: {data}")
+            print(f"[DEBUG] Game data (universe): {data}")
             
             if data.get("data") and len(data["data"]) > 0:
                 game_name = data["data"][0].get("name", "Unknown Game")
-                print(f"[DEBUG] Game name: {game_name}")
+                print(f"[DEBUG] Game name from universe: {game_name}")
                 return game_name
     except Exception as e:
-        print(f"[-] Exception in get_game_name: {e}")
+        print(f"[-] Exception in get_game_name_from_universe: {e}")
+    
+    return None
+
+
+def get_game_name_from_place(place_id):
+    """ดึงชื่อเกมจาก placeId - วิธีนี้ใช้ได้แน่นอน"""
+    url = f"https://games.roblox.com/v1/games/multiget-place-details?placeIds={place_id}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        print(f"[DEBUG] Game Name API (place) status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"[DEBUG] Game data (place): {data}")
+            
+            if isinstance(data, list) and len(data) > 0:
+                game_name = data[0].get("name", "Unknown Game")
+                print(f"[DEBUG] Game name from place: {game_name}")
+                return game_name
+    except Exception as e:
+        print(f"[-] Exception in get_game_name_from_place: {e}")
     
     return None
 
